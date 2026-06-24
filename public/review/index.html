@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Revisión de matches</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Revisión de matches <span id="super" class="muted"></span></h1>
+    <div id="progress" class="muted"></div>
+  </header>
+
+  <main id="app">
+    <section class="page-col">
+      <img id="page-img" alt="Página de la revista" />
+    </section>
+
+    <section class="info-col">
+      <div class="card">
+        <h2>Producto en la revista <span id="page-tag" class="tag"></span></h2>
+        <dl id="extracted"></dl>
+      </div>
+
+      <div class="card">
+        <h2>Match propuesto del catálogo</h2>
+        <div id="confidence-wrap">
+          <div class="conf-bar"><div id="conf-fill"></div></div>
+          <span id="conf-label"></span>
+        </div>
+        <dl id="proposed"></dl>
+        <p id="reason" class="reason muted"></p>
+      </div>
+
+      <div class="actions">
+        <button id="reject" class="btn reject">Rechazar <kbd>R</kbd></button>
+        <button id="accept" class="btn accept">Aceptar <kbd>A</kbd></button>
+      </div>
+    </section>
+  </main>
+
+  <div id="done" class="done hidden">
+    <h2>✅ No quedan items pendientes</h2>
+    <p id="done-summary" class="muted"></p>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

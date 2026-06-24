@@ -1,0 +1,11 @@
+node_modules/
+.env
+dist/
+
+# Datos locales / caches (no versionar)
+data/products.json
+data/pdfs/
+data/output/
+data/cache/
+
+prueba.txt
