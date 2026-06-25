@@ -67,5 +67,5 @@ Archivos clave:
 ```bash
 npx tsx src/run.ts --super=<makro|vital|rosental|comodin> --from-url [--pages=N]
 npx tsx src/download.ts --super=<makro|vital>   # sólo descarga (supers con PDFs)
-npx tsx src/review-server.ts --super=<nombre>   # UI de revisión
+npx tsx src/review-server.ts                    # UI de revisión (selector de super)
 ```

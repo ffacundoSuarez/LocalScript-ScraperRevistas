@@ -8,13 +8,16 @@
 </head>
 <body>
   <header>
-    <h1>Revisión de matches <span id="super" class="muted"></span></h1>
-    <div id="progress" class="muted"></div>
+    <h1>Revisión de matches</h1>
+    <div class="header-right">
+      <select id="super-select" title="Supermercado"></select>
+      <div id="progress" class="muted"></div>
+    </div>
   </header>
 
   <main id="app">
-    <section class="page-col">
-      <img id="page-img" alt="Página de la revista" />
+    <section class="page-col" title="Rueda: zoom · Arrastrar: mover · Doble click: encuadrar">
+      <img id="page-img" alt="Página de la revista" draggable="false" />
     </section>
 
     <section class="info-col">

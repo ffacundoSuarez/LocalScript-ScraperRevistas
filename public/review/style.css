@@ -23,6 +23,16 @@ header {
   border-bottom: 1px solid var(--border);
 }
 h1 { font-size: 18px; margin: 0; }
+.header-right { display: flex; align-items: center; gap: 16px; }
+#super-select {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
 h2 { font-size: 14px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .muted { color: var(--muted); font-weight: normal; font-size: 13px; }
 
@@ -40,11 +50,20 @@ main {
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
-  max-height: calc(100vh - 110px);
-  display: flex;
-  justify-content: center;
+  height: calc(100vh - 110px);
+  cursor: zoom-in;
+  touch-action: none;
 }
-#page-img { max-width: 100%; max-height: calc(100vh - 112px); object-fit: contain; }
+.page-col.zoomed { cursor: grab; }
+.page-col.dragging { cursor: grabbing; }
+#page-img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  user-select: none;
+  -webkit-user-drag: none;
+}
 
 .info-col { display: flex; flex-direction: column; gap: 16px; }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }

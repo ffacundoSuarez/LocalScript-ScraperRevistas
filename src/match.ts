@@ -40,12 +40,24 @@ function productText(p: CatalogProduct): string {
  * ¿El candidato es de la misma marca que el item? Compara la marca normalizada del item
  * contra (marca + nombre) del candidato, porque a veces la marca viene dentro del nombre
  * y no en el campo `brand`. normalizeText ya colapsa acentos/mayúsculas (AYUDÍN == Ayudin).
+ *
+ * Importante: el match es por **palabra completa**, no substring. Si no, una marca corta como
+ * "Lava" (lavavajillas) matchearía cualquier "LAVAndina" → falso positivo cross-marca.
  */
 function brandMatches(itemBrand: string, c: CatalogProduct): boolean {
-  const b = normalizeText(itemBrand);
-  if (!b) return true;
-  const hay = normalizeText(`${c.brand ?? ''} ${c.name}`);
-  return hay.includes(b);
+  const needle = normalizeText(itemBrand).split(' ').filter(Boolean);
+  if (needle.length === 0) return true;
+  const hay = normalizeText(`${c.brand ?? ''} ${c.name}`).split(' ');
+  // ¿aparece la marca como secuencia de palabras completas dentro del candidato?
+  for (let i = 0; i + needle.length <= hay.length; i++) {
+    if (needle.every((w, j) => hay[i + j] === w)) return true;
+  }
+  return false;
+}
+
+/** Palabras "de contenido" (sin números/unidades ni tokens muy cortos), para chequear solapamiento. */
+function contentTokens(s: string): Set<string> {
+  return new Set(normalizeText(s).split(' ').filter((w) => w.length >= 3 && !/\d/.test(w)));
 }
 
 function itemText(item: ExtractedProduct): string {
@@ -218,6 +230,21 @@ ${candidateList || '(sin candidatos)'}`,
   // Ruteo por umbral (lo decidimos nosotros, no el modelo):
   // hay candidato con confianza suficiente → va a la cola de revisión; si no → no_match.
   if (best && confidence >= config.matchThreshold) {
+    // Guardia para items SIN marca legible: sin el ancla de marca, el juez a veces acepta
+    // productos de tipo totalmente distinto (ej. "Aceite" → "Lavandina"). Exigimos al menos
+    // una palabra de contenido en común con el candidato; si no, descartamos.
+    const hasBrand = !!(item.brand && normalizeText(item.brand));
+    if (!hasBrand) {
+      const itemTok = contentTokens(item.name);
+      const candTok = contentTokens(`${best.brand ?? ''} ${best.name}`);
+      const overlap = [...itemTok].some((t) => candTok.has(t));
+      if (!overlap) {
+        return {
+          item, page, method: 'none', matched: null, confidence,
+          reason: `Sin marca y sin palabras en común con "${best.name}" → descartado`, candidates,
+        };
+      }
+    }
     return { item, page, method: 'llm', matched: best, confidence, reason: j?.reason ?? '', candidates };
   }
 

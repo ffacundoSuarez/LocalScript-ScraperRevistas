@@ -1,14 +1,30 @@
 let queue = [];      // items pendientes a revisar
 let pos = 0;         // índice actual dentro de queue
 let counts = { accepted: 0, rejected: 0, total: 0 };
+let currentSuper = null;
 
 const $ = (id) => document.getElementById(id);
 const fmtMoney = (n) => (n == null ? '—' : `$${Number(n).toLocaleString('es-AR')}`);
 
-async function load() {
-  const res = await fetch('/api/queue');
+async function init() {
+  const res = await fetch('/api/supers');
+  const { supers } = await res.json();
+  const sel = $('super-select');
+  if (!supers.length) {
+    sel.innerHTML = '<option>sin colas</option>';
+    return;
+  }
+  sel.innerHTML = supers.map((s) => `<option value="${s.id}">${s.name}</option>`).join('');
+  sel.addEventListener('change', () => load(sel.value));
+  currentSuper = supers[0].id;
+  await load(currentSuper);
+}
+
+async function load(superName) {
+  currentSuper = superName;
+  $('super-select').value = superName;
+  const res = await fetch('/api/queue?super=' + encodeURIComponent(superName));
   const data = await res.json();
-  $('super').textContent = `· ${data.supermarket} (${data.source_pdf})`;
   counts = { accepted: data.counts.accepted, rejected: data.counts.rejected, total: data.counts.total };
   queue = data.items.filter((it) => it.status === 'pending');
   pos = 0;
@@ -24,7 +40,7 @@ function render() {
   $('progress').textContent =
     `${pos + 1} / ${queue.length} pendientes · ${counts.accepted} aceptados · ${counts.rejected} rechazados`;
 
-  $('page-img').src = '/' + it.page_image;
+  $('page-img').src = '/img/' + encodeURIComponent(currentSuper) + '/' + it.page_image;
   $('page-tag').textContent = `pág. ${it.page}${it.source_pdf ? ' · ' + it.source_pdf : ''}`;
 
   const e = it.extracted;
@@ -64,7 +80,7 @@ function escapeHtml(s) {
 async function decide(status) {
   if (pos >= queue.length) return;
   const it = queue[pos];
-  await fetch('/api/review/' + encodeURIComponent(it.id), {
+  await fetch('/api/review/' + encodeURIComponent(it.id) + '?super=' + encodeURIComponent(currentSuper), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status }),
@@ -84,10 +100,70 @@ function showDone() {
 
 $('accept').addEventListener('click', () => decide('accepted'));
 $('reject').addEventListener('click', () => decide('rejected'));
+
+// --- Zoom in-place sobre la imagen de la página (rueda + arrastre) -----------
+// Sin salir de la revisión: rueda para acercar/alejar sobre el cursor, arrastrar
+// para mover, doble click para volver al encuadre.
+const pageImg = $('page-img');
+const pageCol = document.querySelector('.page-col');
+let zScale = 1, zBase = 1, zX = 0, zY = 0;
+
+function zClamp() {
+  const cw = pageCol.clientWidth, ch = pageCol.clientHeight;
+  const sw = pageImg.naturalWidth * zScale, sh = pageImg.naturalHeight * zScale;
+  zX = sw <= cw ? (cw - sw) / 2 : Math.min(0, Math.max(cw - sw, zX));
+  zY = sh <= ch ? (ch - sh) / 2 : Math.min(0, Math.max(ch - sh, zY));
+}
+function zApply() {
+  zClamp();
+  pageImg.style.transform = `translate(${zX}px, ${zY}px) scale(${zScale})`;
+  pageCol.classList.toggle('zoomed', zScale > zBase + 0.001);
+}
+function zFit() {
+  const cw = pageCol.clientWidth, ch = pageCol.clientHeight;
+  const nw = pageImg.naturalWidth, nh = pageImg.naturalHeight;
+  if (!nw || !nh) return;
+  zBase = Math.min(cw / nw, ch / nh);
+  zScale = zBase;
+  zX = (cw - nw * zBase) / 2;
+  zY = (ch - nh * zBase) / 2;
+  zApply();
+}
+pageImg.addEventListener('load', zFit); // re-encuadra al cambiar de item
+window.addEventListener('resize', zFit);
+
+pageCol.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const rect = pageCol.getBoundingClientRect();
+  const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+  const next = Math.min(Math.max(zScale * (e.deltaY < 0 ? 1.2 : 1 / 1.2), zBase), zBase * 12);
+  // mantener fijo el punto bajo el cursor
+  zX = cx - (cx - zX) * (next / zScale);
+  zY = cy - (cy - zY) * (next / zScale);
+  zScale = next;
+  if (zScale <= zBase + 0.001) zFit(); else zApply();
+}, { passive: false });
+
+let zDrag = false, zlx = 0, zly = 0;
+pageCol.addEventListener('mousedown', (e) => {
+  if (zScale <= zBase + 0.001) return; // sólo se puede mover cuando hay zoom
+  zDrag = true; zlx = e.clientX; zly = e.clientY;
+  pageCol.classList.add('dragging');
+  e.preventDefault();
+});
+window.addEventListener('mousemove', (e) => {
+  if (!zDrag) return;
+  zX += e.clientX - zlx; zY += e.clientY - zly;
+  zlx = e.clientX; zly = e.clientY;
+  zApply();
+});
+window.addEventListener('mouseup', () => { zDrag = false; pageCol.classList.remove('dragging'); });
+pageCol.addEventListener('dblclick', zFit);
+
 document.addEventListener('keydown', (ev) => {
   const k = ev.key.toLowerCase();
   if (k === 'a') decide('accepted');
   else if (k === 'r') decide('rejected');
 });
 
-load();
+init();

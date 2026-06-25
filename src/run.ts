@@ -90,7 +90,7 @@ async function main() {
   }
 
   console.log(`\n💾 Cola en ${reviewPath(args.superName)}`);
-  console.log(`   Revisá en la UI:  npx tsx src/review-server.ts --super=${args.superName}\n`);
+  console.log(`   Revisá en la UI:  npx tsx src/review-server.ts   (elegí el super en el selector)\n`);
 }
 
 main().catch((err) => {
