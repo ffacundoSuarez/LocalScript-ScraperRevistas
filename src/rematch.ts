@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { getCatalog } from './products.js';
-import { buildCatalogIndex, matchItem, type MatchResult } from './match.js';
+import { buildCatalogIndex, matchItems } from './match.js';
 import type { ExtractedProduct } from './extract.js';
 import { superDir, writeQueue, reviewPath, loadQueue } from './store.js';
 
@@ -63,11 +63,11 @@ async function main() {
     const pageImages = new Map<number, string>();
     for (const it of group) pageImages.set(it.page, it.page_image);
 
-    const results: MatchResult[] = [];
-    for (const it of group) {
-      const item: ExtractedProduct = { ...it.extracted, confidence: 1 };
-      results.push(await matchItem(item, it.page, index));
-    }
+    const entries = group.map((it) => ({
+      item: { ...it.extracted, confidence: 1 } as ExtractedProduct,
+      page: it.page,
+    }));
+    const results = await matchItems(entries, index);
     await writeQueue(supermarket, group[0]?.source_pdf ?? 'unknown', results, hash, pageImages);
   }
 

@@ -28,6 +28,10 @@ export const SUPERMARKETS: Record<string, Supermarket> = {
     id: 'rosental',
     name: 'Rosental',
     strategy: 'pubhtml5',
+    // La home linkea el flipbook PubHTML5 vigente en su HTML estático: lo descubrimos en cada
+    // corrida desde acá (así no se rompe cuando publican uno nuevo).
+    offersUrl: 'https://www.rosental.com.ar/',
+    // Fallback por si algún día el link no aparece en la home.
     pubhtml5Url: 'https://online.pubhtml5.com/oggo/ignq/',
   },
   comodin: {

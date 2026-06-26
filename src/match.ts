@@ -6,6 +6,8 @@ import OpenAI from 'openai';
 import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 import { config } from './config.js';
+import { withRetry } from './retry.js';
+import { mapPool } from './pool.js';
 import type { CatalogProduct } from './products.js';
 import type { ExtractedProduct } from './extract.js';
 
@@ -81,8 +83,20 @@ function cosine(a: number[], b: number[]): number {
 
 async function embedBatch(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
-  const res = await client.embeddings.create({ model: config.embeddingModel, input: texts });
+  const res = await withRetry(
+    () => client.embeddings.create({ model: config.embeddingModel, input: texts }),
+    { label: 'embeddings' },
+  );
   return res.data.map((d) => d.embedding);
+}
+
+/** Embebe muchos textos en pocos lotes (la API acepta arrays). Mantiene el orden 1:1 con `texts`. */
+async function embedAll(texts: string[], chunk = 256): Promise<number[][]> {
+  const out: number[][] = [];
+  for (let i = 0; i < texts.length; i += chunk) {
+    out.push(...(await embedBatch(texts.slice(i, i + chunk))));
+  }
+  return out;
 }
 
 export interface CatalogIndex {
@@ -166,6 +180,7 @@ export async function matchItem(
   item: ExtractedProduct,
   page: number,
   index: CatalogIndex,
+  queryEmb?: number[],
   topK = 8,
 ): Promise<MatchResult> {
   // 1) EAN exacto (gratis)
@@ -179,10 +194,11 @@ export async function matchItem(
     }
   }
 
-  // 2) Retrieval por embeddings → top-K candidatos
-  const [queryEmb] = await embedBatch([itemText(item)]);
+  // 2) Retrieval por embeddings → top-K candidatos.
+  // El embedding de la query puede venir precomputado en lote (ver matchItems); si no, se calcula acá.
+  const emb = queryEmb ?? (await embedBatch([itemText(item)]))[0];
   const scored = index.products
-    .map((p, i) => ({ p, score: cosine(queryEmb, index.embeddings[i]) }))
+    .map((p, i) => ({ p, score: cosine(emb, index.embeddings[i]) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, topK);
   let candidates = scored.map((s) => s.p);
@@ -205,21 +221,25 @@ export async function matchItem(
     .map((c) => `- id=${c.id} | marca=${c.brand ?? '?'} | ${c.name} | cant=${c.quantity ?? '?'} | ean=${c.ean ?? '?'}`)
     .join('\n');
 
-  const completion = await client.beta.chat.completions.parse({
-    model: config.judgeModel,
-    messages: [
-      { role: 'system', content: JUDGE_SYSTEM },
-      {
-        role: 'user',
-        content: `PRODUCTO DE LA REVISTA:
+  const completion = await withRetry(
+    () =>
+      client.beta.chat.completions.parse({
+        model: config.judgeModel,
+        messages: [
+          { role: 'system', content: JUDGE_SYSTEM },
+          {
+            role: 'user',
+            content: `PRODUCTO DE LA REVISTA:
 marca=${item.brand ?? '?'} | ${item.name} | cant=${item.quantity ?? '?'} | ean=${item.ean ?? '?'}
 
 CANDIDATOS DEL CATÁLOGO:
 ${candidateList || '(sin candidatos)'}`,
-      },
-    ],
-    response_format: zodResponseFormat(Judgement, 'judgement'),
-  });
+          },
+        ],
+        response_format: zodResponseFormat(Judgement, 'judgement'),
+      }),
+    { label: `juez pág. ${page}` },
+  );
 
   const j = completion.choices[0]?.message.parsed;
   const best = j?.best_candidate_id
@@ -252,4 +272,20 @@ ${candidateList || '(sin candidatos)'}`,
     item, page, method: 'none', matched: null,
     confidence, reason: j?.reason ?? 'Sin coincidencia suficiente', candidates,
   };
+}
+
+/**
+ * Matchea muchos items de una. Dos optimizaciones sobre llamar matchItem en un loop:
+ *  - B2: pre-embebe TODAS las queries en pocos lotes (en vez de 1 llamada por item).
+ *  - B1: corre el retrieval + juez con concurrencia acotada (config.concurrency), preservando orden.
+ * Devuelve los resultados en el mismo orden que `entries` (ids de cola estables).
+ */
+export async function matchItems(
+  entries: { item: ExtractedProduct; page: number }[],
+  index: CatalogIndex,
+  concurrency = config.concurrency,
+): Promise<MatchResult[]> {
+  if (entries.length === 0) return [];
+  const embeddings = await embedAll(entries.map((e) => itemText(e.item)));
+  return mapPool(entries, concurrency, (e, i) => matchItem(e.item, e.page, index, embeddings[i]));
 }

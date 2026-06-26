@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
+import { fetchRetry } from './retry.js';
 
 const CACHE_PATH = path.resolve('data', 'products.json');
 
@@ -65,7 +66,7 @@ async function fetchPage(page: number, limit: number): Promise<PageResult> {
   url.searchParams.set('limit', String(limit));
   url.searchParams.set('page', String(page));
 
-  const res = await fetch(url, { headers: { 'X-API-Key': config.productsApiKey } });
+  const res = await fetchRetry(url, { headers: { 'X-API-Key': config.productsApiKey } }, 'Products API');
   if (!res.ok) {
     throw new Error(`Products API ${res.status} ${res.statusText}: ${await res.text()}`);
   }

@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import type { MatchResult } from './match.js';
+import type { ExtractedProduct } from './extract.js';
 import { detectImage } from './image.js';
 
 export type ReviewStatus = 'pending' | 'accepted' | 'rejected';
@@ -54,6 +55,42 @@ export function pdfHash(pdfPath: string, content: Buffer): string {
   return createHash('sha1').update(path.basename(pdfPath)).update(content).digest('hex').slice(0, 10);
 }
 
+// --- Cache de extracción (visión) -----------------------------------------
+// La visión es lo que cuesta dinero, así que la persistimos por página a medida que sale.
+// Si una corrida se corta, la siguiente reanuda: sólo se llama a visión para las páginas que faltan.
+function extractedPath(supermarket: string, hash: string): string {
+  return path.join(superDir(supermarket), 'extracted', `${hash}.json`);
+}
+
+/** Levanta la extracción ya hecha de una revista (hash): Map<nº de página → productos>. */
+export async function loadExtraction(
+  supermarket: string,
+  hash: string,
+): Promise<Map<number, ExtractedProduct[]>> {
+  const file = extractedPath(supermarket, hash);
+  if (!existsSync(file)) return new Map();
+  try {
+    const arr = JSON.parse(await readFile(file, 'utf8')) as { page: number; products: ExtractedProduct[] }[];
+    return new Map(arr.map((e) => [e.page, e.products]));
+  } catch {
+    return new Map();
+  }
+}
+
+/** Persiste la extracción de una revista (hash). Se llama tras cada página para no perder visión. */
+export async function saveExtraction(
+  supermarket: string,
+  hash: string,
+  byPage: Map<number, ExtractedProduct[]>,
+): Promise<void> {
+  const file = extractedPath(supermarket, hash);
+  await mkdir(path.dirname(file), { recursive: true });
+  const arr = [...byPage.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([page, products]) => ({ page, products }));
+  await writeFile(file, JSON.stringify(arr, null, 2), 'utf8');
+}
+
 /**
  * Guarda los PNG de las páginas bajo pages/<hash>/ (un subdir por PDF, así varias revistas del
  * mismo super no se pisan) y devuelve un map nº de página → ruta relativa.
@@ -62,15 +99,17 @@ export async function savePages(
   supermarket: string,
   hash: string,
   pages: Buffer[],
+  firstPage = 1,
 ): Promise<Map<number, string>> {
   const dir = path.join(superDir(supermarket), 'pages', hash);
   await mkdir(dir, { recursive: true });
   const map = new Map<number, string>();
   for (let i = 0; i < pages.length; i++) {
+    const pageNo = firstPage + i; // nº real (puede empezar en >1 si se pidió un rango)
     const { ext } = detectImage(pages[i]); // PNG/JPEG/WebP según la fuente
-    const rel = path.join('pages', hash, `page-${String(i + 1).padStart(2, '0')}.${ext}`);
+    const rel = path.join('pages', hash, `page-${String(pageNo).padStart(2, '0')}.${ext}`);
     await writeFile(path.join(superDir(supermarket), rel), pages[i]);
-    map.set(i + 1, rel.replace(/\\/g, '/'));
+    map.set(pageNo, rel.replace(/\\/g, '/'));
   }
   return map;
 }

@@ -3,6 +3,7 @@ import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 import { config } from './config.js';
 import { detectImage } from './image.js';
+import { withRetry } from './retry.js';
 
 const client = new OpenAI({ apiKey: config.openaiApiKey });
 
@@ -45,23 +46,27 @@ export async function extractProductsFromPage(
   const { mime } = detectImage(image);
   const base64 = image.toString('base64');
 
-  const completion = await client.beta.chat.completions.parse({
-    model: config.visionModel,
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: `Página ${pageNumber}. Extraé los productos en promoción.` },
+  const completion = await withRetry(
+    () =>
+      client.beta.chat.completions.parse({
+        model: config.visionModel,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
           {
-            type: 'image_url',
-            image_url: { url: `data:${mime};base64,${base64}`, detail: 'high' },
+            role: 'user',
+            content: [
+              { type: 'text', text: `Página ${pageNumber}. Extraé los productos en promoción.` },
+              {
+                type: 'image_url',
+                image_url: { url: `data:${mime};base64,${base64}`, detail: 'high' },
+              },
+            ],
           },
         ],
-      },
-    ],
-    response_format: zodResponseFormat(PageExtraction, 'page_extraction'),
-  });
+        response_format: zodResponseFormat(PageExtraction, 'page_extraction'),
+      }),
+    { label: `visión pág. ${pageNumber}` },
+  );
 
   return completion.choices[0]?.message.parsed?.products ?? [];
 }

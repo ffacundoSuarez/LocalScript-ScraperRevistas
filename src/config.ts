@@ -24,4 +24,8 @@ export const config = {
   // Umbral mínimo de confianza para mandar un candidato a la cola de revisión humana.
   // Bajo a propósito: el humano es el filtro real; preferimos que dude un humano y no perder matches.
   matchThreshold: Number(process.env.MATCH_THRESHOLD ?? '0.3'),
+
+  // Concurrencia para extracción (visión) y matching (juez). Conservador para no pegarle a los
+  // rate limits de OpenAI; bajalo a 1 si ves muchos 429 (el retry los absorbe igual).
+  concurrency: Math.max(1, Number(process.env.CONCURRENCY ?? '5')),
 } as const;

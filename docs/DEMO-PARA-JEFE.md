@@ -136,15 +136,19 @@ Corrida de junio (2ª quincena), procesando una porción de cada revista para co
 
 | Super | Páginas leídas | Productos extraídos | Matches en cola |
 |---|---|---|---|
-| Makro | 32 (3 folletos) | 289 | 8 |
-| Vital | 33 (6 folletos) | 286 | 5 |
-| Rosental | 60 (de 148) | 851 | 33 |
+| Makro | 57 (5 folletos) | 593 | 8 |
+| Vital | 30 (6 folletos) | 286 | 5 |
+| Rosental | 88 (61–148, de 148) | 1.375 | 58 |
 | Comodín | 23 | 271 | 14 |
-| **Total** | **148** | **1.697** | **60** |
+| **Total** | **198** | **2.525** | **85** |
 
-Sobre ~1.700 productos leídos de las revistas, **60** matchearon contra el catálogo de limpieza y
+Sobre ~2.500 productos leídos de las revistas, **85** matchearon contra el catálogo de limpieza y
 quedaron para revisión humana. El resto dio "no match" — en su gran mayoría correctamente, porque
 son productos fuera del catálogo de limpieza (alimentos, bebidas, etc.). Ver la nota de la sección 7.
+
+> En Rosental se leyó la **2ª mitad** de la revista (páginas 61–148): ahí está el grueso de la
+> sección de limpieza, por eso da más matches (58) que la 1ª mitad (33). Es un ejemplo de por qué
+> conviene poder elegir el rango de páginas a procesar.
 
 ---
 
@@ -152,6 +156,16 @@ son productos fuera del catálogo de limpieza (alimentos, bebidas, etc.). Ver la
 
 **Funcionando hoy:** descarga automática de los 4 supers · extracción con visión · match de 2 etapas
 · UI de revisión con aprobar/rechazar y selector de super.
+
+**Robustez y velocidad (mejoras recientes):**
+- **Reintentos automáticos:** ante un error de red o saturación temporal del servicio de IA, el
+  sistema reintenta solo en vez de abortar toda la corrida.
+- **Reanudación sin re-pagar IA:** la lectura de cada página se va guardando a medida que sale; si
+  una corrida se corta, la siguiente retoma donde quedó y **no vuelve a pagar** lo ya leído.
+- **Procesamiento en paralelo:** lectura y match corren de a varios a la vez. En la prueba de
+  Rosental, el match de ~1.375 productos bajó de ~15–20 min a ~2 min.
+- **Selección de páginas:** se puede pedir un rango (ej. páginas 61–148) para leer justo la sección
+  de interés y controlar el costo de IA.
 
 **Próximos pasos:**
 - **Confirmar el catálogo real:** verificar si el endpoint está acotado a limpieza o si hay un
@@ -170,6 +184,8 @@ Requisitos: Node.js, y un archivo `.env` con `OPENAI_API_KEY` y `PRODUCTS_API_KE
 ```bash
 # 1) Descargar + leer + matchear un super (--pages limita el costo de IA)
 npx tsx src/run.ts --super=<makro|vital|rosental|comodin> --from-url --pages=20
+#    …o un rango de páginas (útil para caer en la sección de limpieza):
+npx tsx src/run.ts --super=rosental --from-url --pages=61-148
 
 # 2) Abrir la UI de revisión (sirve TODOS los supers que ya se corrieron)
 npx tsx src/review-server.ts

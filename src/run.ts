@@ -1,16 +1,35 @@
 import path from 'node:path';
+import { config } from './config.js';
 import { getCatalog } from './products.js';
 import { extractProductsFromPage } from './extract.js';
-import { buildCatalogIndex, matchItem, type CatalogIndex, type MatchResult } from './match.js';
-import { savePages, writeQueue, reviewPath } from './store.js';
-import { getMagazines, pdfFileSource, type MagazineSource } from './sources.js';
+import { buildCatalogIndex, matchItems, type CatalogIndex } from './match.js';
+import { savePages, writeQueue, reviewPath, loadExtraction, saveExtraction } from './store.js';
+import { getMagazines, pdfFileSource, type MagazineSource, type PageSelection } from './sources.js';
+import { mapPool } from './pool.js';
 
 interface Args {
   pdfPath?: string;
   superName: string;
-  maxPages?: number;
+  pages?: PageSelection;
   refresh: boolean;
   fromUrl: boolean;
+}
+
+/** `--pages=N` → primeras N páginas; `--pages=A-B` → de la A a la B (inclusive, 1-based). */
+function parsePages(v: string | undefined): PageSelection | undefined {
+  if (!v || v === 'true') return undefined;
+  const m = v.match(/^(\d+)(?:-(\d+))?$/);
+  if (!m) {
+    console.error(`--pages inválido: "${v}". Usá N (primeras N) o A-B (rango).`);
+    process.exit(1);
+  }
+  const a = Number(m[1]);
+  const b = m[2] ? Number(m[2]) : undefined;
+  if (b !== undefined && b < a) {
+    console.error(`--pages inválido: el final (${b}) es menor que el inicio (${a}).`);
+    process.exit(1);
+  }
+  return b !== undefined ? { start: a, end: b } : { start: 1, end: a };
 }
 
 function parseArgs(): Args {
@@ -26,7 +45,7 @@ function parseArgs(): Args {
   const superName = flags.get('super') ?? (pdfPath ? path.parse(pdfPath).name : undefined);
 
   if (!fromUrl && !pdfPath) {
-    console.error('Uso: npx tsx src/run.ts <ruta.pdf> --super=makro [--pages=2] [--refresh]');
+    console.error('Uso: npx tsx src/run.ts <ruta.pdf> --super=makro [--pages=2|--pages=61-148] [--refresh]');
     console.error('  o: npx tsx src/run.ts --super=makro --from-url   (descarga + procesa)');
     process.exit(1);
   }
@@ -37,7 +56,7 @@ function parseArgs(): Args {
   return {
     pdfPath,
     superName,
-    maxPages: flags.has('pages') ? Number(flags.get('pages')) : undefined,
+    pages: parsePages(flags.get('pages')),
     refresh: flags.has('refresh'),
     fromUrl,
   };
@@ -49,18 +68,35 @@ async function processMagazine(
   source: MagazineSource,
   index: CatalogIndex,
 ): Promise<void> {
-  console.log(`\n📄 ${source.label} (${source.pages.length} páginas)`);
-  const pageImages = await savePages(superName, source.id, source.pages);
+  const first = source.firstPage;
+  const last = first + source.pages.length - 1;
+  console.log(`\n📄 ${source.label} (${source.pages.length} páginas${first > 1 ? `, ${first}–${last}` : ''})`);
+  const pageImages = await savePages(superName, source.id, source.pages, first);
+
+  // Extracción por página con persistencia incremental: si una corrida previa quedó a medias,
+  // reanudamos y sólo pagamos visión por las páginas que faltan. Se keyea por nº REAL de página.
+  const byPage = await loadExtraction(superName, source.id);
+  const todo = source.pages
+    .map((buf, i) => ({ buf, page: first + i }))
+    .filter(({ page }) => !byPage.has(page));
+  if (todo.length < source.pages.length) {
+    console.log(`   ↻ reanudando: ${source.pages.length - todo.length} ya extraídas, faltan ${todo.length}.`);
+  }
+  // Concurrencia acotada para la visión; las escrituras del cache se serializan (mismo archivo).
+  let saveChain: Promise<void> = Promise.resolve();
+  await mapPool(todo, config.concurrency, async ({ buf, page }) => {
+    byPage.set(page, await extractProductsFromPage(buf, page));
+    saveChain = saveChain.then(() => saveExtraction(superName, source.id, byPage));
+  });
+  await saveChain; // flush final del cache
 
   const items: { item: Awaited<ReturnType<typeof extractProductsFromPage>>[number]; page: number }[] = [];
-  for (let i = 0; i < source.pages.length; i++) {
-    const products = await extractProductsFromPage(source.pages[i], i + 1);
-    for (const item of products) items.push({ item, page: i + 1 });
+  for (let page = first; page <= last; page++) {
+    for (const item of byPage.get(page) ?? []) items.push({ item, page });
   }
   console.log(`   ${items.length} productos extraídos. Matcheando...`);
 
-  const results: MatchResult[] = [];
-  for (const { item, page } of items) results.push(await matchItem(item, page, index));
+  const results = await matchItems(items, index);
 
   const matched = results.filter((r) => r.matched).length;
   const queue = await writeQueue(superName, source.label, results, source.id, pageImages);
@@ -77,8 +113,8 @@ async function main() {
 
   console.log(args.fromUrl ? '\n2) Obteniendo revistas...' : '\n2) Cargando PDF local...');
   const sources = args.fromUrl
-    ? await getMagazines(args.superName, args.maxPages)
-    : [await pdfFileSource(args.pdfPath!, args.maxPages)];
+    ? await getMagazines(args.superName, args.pages)
+    : [await pdfFileSource(args.pdfPath!, args.pages)];
   if (sources.length === 0) {
     console.error('No se obtuvo ninguna revista. Abortando.');
     process.exit(1);

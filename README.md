@@ -38,7 +38,8 @@ npx tsx src/run.ts --super=makro --from-url --pages=2
 npx tsx src/run.ts data/pdfs/makro.pdf --super=makro
 
 # 3) Levantar la UI de revisión y abrir http://localhost:3000
-npx tsx src/review-server.ts --super=makro
+#    (es multi-super: elegí el super en el selector de arriba)
+npx tsx src/review-server.ts
 ```
 
 ### Sólo descargar (sin procesar)
@@ -53,12 +54,16 @@ npx tsx src/rematch.ts --super=makro    # re-corre el matching desde all.json
 
 Cada corrida del paso 2 deja en `data/output/<super>/`:
 - `pages/page-XX.png` — las páginas renderizadas (las usa la UI).
+- `extracted/<hash>.json` — cache de la extracción de visión por página; si una corrida se corta,
+  la siguiente **reanuda** desde acá sin re-pagar visión.
 - `review.json` — la **cola**: matches propuestos con estado `pending/accepted/rejected`.
 - `all.json` — dump completo de todo lo extraído (debug).
 
 ## Flags útiles (paso 2)
 - `--super=nombre` → nombre del super (define la carpeta de salida). Default: nombre del PDF.
 - `--pages=N` → procesa sólo las primeras N páginas (controlar costo en pruebas).
+- `--pages=A-B` → procesa el rango de páginas A a B (inclusive). Útil cuando la sección de interés
+  (ej. limpieza) está más adelante en la revista; conserva el nº real de página.
 - `--refresh` → vuelve a pegarle al endpoint en vez de usar el catálogo cacheado.
 
 ## Variables de entorno (`.env`)

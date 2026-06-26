@@ -38,11 +38,15 @@ Archivos clave:
   usa sólo esos; si no, baja todos (caso Makro).
 
 ## Rosental — `pubhtml5`
-- Revista: flipbook **PubHTML5** `https://online.pubhtml5.com/oggo/ignq/` (linkeado desde la home).
+- Revista: flipbook **PubHTML5** linkeado desde la home `https://www.rosental.com.ar/`. La URL del
+  libro (ej. `online.pubhtml5.com/oggo/ignq/`) **se descubre en cada corrida** parseando el HTML
+  estático de la home (regex a `pubhtml5.com/<acc>/<libro>`), así NO se rompe cuando publican un
+  libro nuevo. Hay una URL fija de fallback (`sm.pubhtml5Url`) por si la home no lo linkeara.
 - El `config.js` del libro es público y trae el título, la cantidad de páginas y los nombres de las
   imágenes por página (`"n":["<hash>.webp"]`, en orden).
 - Las imágenes grandes están en `<bookUrl>files/large/<hash>.webp`. Se bajan directo (sin navegador).
-- ⚠️ Tiene **148 páginas** → en pruebas usar `--pages=N` para no gastar de más en visión.
+- ⚠️ Tiene **148 páginas** → en pruebas usar `--pages=N` (primeras N) o `--pages=A-B` (rango, ej.
+  `61-148` para caer en la sección de limpieza) y no gastar de más en visión.
 
 ## Comodín — `publuu`
 - Página: `https://supermercadoscomodin.com/maxicomodin/` → embebe un flipbook **Publuu**
@@ -65,7 +69,7 @@ Archivos clave:
 
 ## Comandos
 ```bash
-npx tsx src/run.ts --super=<makro|vital|rosental|comodin> --from-url [--pages=N]
+npx tsx src/run.ts --super=<makro|vital|rosental|comodin> --from-url [--pages=N|--pages=A-B]
 npx tsx src/download.ts --super=<makro|vital>   # sólo descarga (supers con PDFs)
 npx tsx src/review-server.ts                    # UI de revisión (selector de super)
 ```

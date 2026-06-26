@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { getSupermarket } from './supermarkets.js';
+import { fetchRetry } from './retry.js';
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
@@ -40,7 +41,7 @@ function findDisplayedFolletos(html: string, base: string): PdfLink[] {
 
 /** Baja el HTML de la página de ofertas y extrae los links a PDFs. */
 export async function findPdfLinks(offersUrl: string): Promise<PdfLink[]> {
-  const res = await fetch(offersUrl, { headers: { 'User-Agent': UA } });
+  const res = await fetchRetry(offersUrl, { headers: { 'User-Agent': UA } }, offersUrl);
   if (!res.ok) throw new Error(`No pude leer ${offersUrl}: HTTP ${res.status}`);
   const html = await res.text();
 
@@ -70,7 +71,7 @@ export async function downloadPdf(link: PdfLink, destDir: string): Promise<strin
     console.log(`  · ya existe, salteo: ${link.filename}`);
     return dest;
   }
-  const res = await fetch(link.url, { headers: { 'User-Agent': UA } });
+  const res = await fetchRetry(link.url, { headers: { 'User-Agent': UA } }, link.filename);
   if (!res.ok) throw new Error(`No pude descargar ${link.url}: HTTP ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
   await writeFile(dest, buf);
